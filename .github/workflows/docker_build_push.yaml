@@ -1,0 +1,54 @@
+name: Build and Push Docker Image to Docker Hub
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  REPO_NAME: ${{ secrets.REPO_NAME }}
+
+jobs:
+
+  build_and_test:
+    name: Build and Test Docker Image
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build the Docker image
+      run: docker build . -t $DOCKER_USERNAME/$REPO_NAME
+
+    - uses: actions/checkout@v2
+    - name: Run the Docker image
+      run: docker run -p 5000:5000 -d $DOCKER_USERNAME/$REPO_NAME
+
+    - uses: cygnetdigital/wait_for_response@v2.0.0
+      with:
+        url: 'http://localhost:5000/'
+        responseCode: '200'
+        timeout: 10
+        interval: 3
+
+  push_to_registry:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    needs: [build_and_test]
+    steps:
+
+    - name: Check out the repo
+      uses: actions/checkout@v3
+
+    - id: commit
+      uses: pr-mpt/actions-commit-hash@v2
+
+    - name: docker login
+      run: | # log into docker hub account
+        docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+    - name: Build the Docker image # push The image to the docker hub
+      run: docker build . --tag $DOCKER_USERNAME/$REPO_NAME:${{ steps.commit.outputs.short }} --tag $DOCKER_USERNAME/$REPO_NAME:latest
+
+    - name: Docker Push
+      run: docker push $DOCKER_USERNAME/$REPO_NAME --all-tags 
